@@ -59,6 +59,9 @@ esp_mqtt_client_handle_t client;
 auto lastTimestamp = std::chrono::steady_clock::now();
 #define THROTTLE_INTERVAL 5
 
+/// Minimum confidence for detection to be accepted
+#define MIN_CONFIDENCE 0.8
+
 #define MAX_DETECTIONS 16
 
 static const char* METASTREAM = "spimetaout";
@@ -230,34 +233,33 @@ void run_demo() {
                 // Iterate detections
 				for(const dai::ImgDetection& det : det.detections) {
                     // Ignore if not specific labels (person, car, cat)
-                    if(det.label != 7 && det.label != 8 && det.label != 15) {
+                    if(det.label != 7 && det.label != 8 && det.label != 15) {   // TODO: change to constant vector and use find()
                         printf("Ignoring detection with label %d\n", det.label);
                         continue;
                     }
-                    if(det.confidence <= 0.8) {
+                    if(det.confidence <= MIN_CONFIDENCE) {
                         // Too low confidence: ignore
                         continue;
                     }
 
-					if(det.label <= labels.size()) {
-   						printf("label: %d, name: %s, confidence: %.2f\n", det.label, labels[det.label].c_str(), det.confidence);
+                    // TODO: create defined rects for "slots" and check which, if any, detection is in and specify in output
+                    
+                    // JSON output
+                    json detection = {
+                        {"label", det.label},
+                        {"confidence", det.confidence},
+                        {"rect", {
+                            {"xmin", det.xmin},
+                            {"ymin", det.ymin},
+                            {"xmax", det.xmax},
+                            {"ymax", det.ymax},
+                        }}
+                    };
+                    
+                    // Add category name or NULL if index out-of-bounds
+                    detection["category"] = (det.label <= labels.size() ? labels[det.label] : NULL);
 
-                        json detection = {
-                            {"label", det.label},
-                            {"category", labels[det.label]},
-                            {"confidence", det.confidence},
-                        };
-                        jsonRoot["detections"].push_back(detection);
-                    } else {
-						printf("label: %d, confidence: %.2f\n", det.label, det.confidence);
-
-                        json detection = {
-                            {"label", det.label},
-                            {"category", NULL},
-                            {"confidence", det.confidence},
-                        };
-                        jsonRoot["detections"].push_back(detection);
-                    }
+                    jsonRoot["detections"].push_back(detection);
 				}
 
                 // Only send if we found any relevant categories
