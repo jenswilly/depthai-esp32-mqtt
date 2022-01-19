@@ -1,0 +1,37 @@
+menu "Example Configuration"
+
+    config BROKER_URL
+        string "Broker URL"
+        default "mqtt://mqtt.eclipseprojects.io"
+        help
+            URL of the broker to connect to
+
+    config BROKER_PORT
+        int "Port number"
+        default 1883
+        help
+            Port number to connect to
+
+    config BROKER_USERNAME
+        string "Username"
+        default ""
+        help
+            Broker username
+
+    config BROKER_PASSWORD
+        string "Password"
+        default ""
+        help
+            Broker password
+
+    config BROKER_CLIENTID
+        string "Client ID"
+        default "bb14506b-2c6a-4dc9-8c16-f98f3419603b"
+        help
+            Client ID
+            
+    config BROKER_URL_FROM_STDIN
+        bool
+        default y if BROKER_URL = "FROM_STDIN"
+
+endmenu

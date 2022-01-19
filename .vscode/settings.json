@@ -1,0 +1,11 @@
+{
+    "cmake.configureOnOpen": true,
+    "files.associations": {
+        "*.ejs": "html",
+        "iosfwd": "cpp",
+        "freertos.h": "c",
+        "mqtt_client.h": "c",
+        "vector": "cpp"
+    },
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 4, ColumnLimit: 0,  IndentWidth: 4, TabWidth: 4, UseTab: ForContinuationAndIndentation, SpaceBeforeParens: Never}"
+}

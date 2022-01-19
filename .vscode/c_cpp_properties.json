@@ -1,0 +1,20 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/Users/jenswilly/Electronics_local/esp/esp-idf/components/**",
+                "/Users/jenswilly/Electronics_local/Luxonis_OAK/esp32-spi-message-demo/components/**",
+                "/Users/jenswilly/Electronics_local/esp/esp-idf/examples/common_components/protocol_examples_common/**"
+            ],
+            "defines": [],
+            "macFrameworkPath": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "macos-clang-x64"
+        }
+    ],
+    "version": 4
+}
