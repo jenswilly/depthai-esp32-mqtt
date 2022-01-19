@@ -37,6 +37,7 @@
 
 #include <string>
 #include <vector>
+#include <chrono>
 
 // JSON
 #include <nlohmann/json.hpp>
@@ -53,6 +54,10 @@ static const std::string mqtt_detections_topic = MQTT_PREFIX "/detections/" CONF
 
 /// Global MQTT client handle
 esp_mqtt_client_handle_t client;
+
+/// Timestamp for throttling
+auto lastTimestamp = std::chrono::steady_clock::now();
+#define THROTTLE_INTERVAL 5
 
 #define MAX_DETECTIONS 16
 
@@ -207,21 +212,33 @@ void run_demo() {
 		dai::Message received_msg;
 
 		if(mySpiApi.req_message(&received_msg, METASTREAM)) {
-			// example of parsing the raw metadata
+			// Parse metadata
 			dai::RawImgDetections det;
 			mySpiApi.parse_metadata(&received_msg.raw_meta, det);
 
-			if(det.detections.size() == 0 ) {
-				// No detections
-				printf(".\n");
-			} else {
-				printf("\n%d detections\n", det.detections.size());
+            // Throttle to avoid flooding the MQTT broker
+            auto now = std::chrono::steady_clock::now();
+            std::chrono::duration<double> elapsed = now - lastTimestamp;
+
+			if(det.detections.size() > 0 && elapsed.count() >= THROTTLE_INTERVAL ) {
+                lastTimestamp = now;
 
                 // Create root object
                 json jsonRoot;
+                jsonRoot["detections"] = json::array();
 
                 // Iterate detections
 				for(const dai::ImgDetection& det : det.detections) {
+                    // Ignore if not specific labels (person, car, cat)
+                    if(det.label != 7 && det.label != 8 && det.label != 15) {
+                        printf("Ignoring detection with label %d\n", det.label);
+                        continue;
+                    }
+                    if(det.confidence <= 0.8) {
+                        // Too low confidence: ignore
+                        continue;
+                    }
+
 					if(det.label <= labels.size()) {
    						printf("label: %d, name: %s, confidence: %.2f\n", det.label, labels[det.label].c_str(), det.confidence);
 
@@ -242,9 +259,12 @@ void run_demo() {
                         jsonRoot["detections"].push_back(detection);
                     }
 				}
-                std::string jsonString = jsonRoot.dump();
-                ESP_LOGI(TAG, "[JSON] serialized: %s", jsonString.c_str());
-                esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+
+                // Only send if we found any relevant categories
+                if(jsonRoot["detections"].size() > 0) {
+                    std::string jsonString = jsonRoot.dump();
+                    esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+                }
 			}
 
 			// free up resources once you're done with the message.
