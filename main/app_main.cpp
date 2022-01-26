@@ -267,9 +267,8 @@ void run_demo() {
                         {"overlaps", json::array()}
                     };
 
-                    // Add slots overlaps
+                    // Add slots overlaps. For each slot, check how much the rect for this detection is contained in/overlaps with the slot
                     Rect detectionRect = {det.xmin, det.ymin, det.xmax, det.ymax};
-
                     for( auto slot: slots ) {
                         detection["overlaps"].push_back(slot.overlapRatio(&detectionRect));
                     }
