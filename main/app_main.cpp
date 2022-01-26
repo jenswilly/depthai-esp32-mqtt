@@ -39,6 +39,8 @@
 #include <vector>
 #include <chrono>
 
+#include "rect.hpp"
+
 // JSON
 #include <nlohmann/json.hpp>
 using json = nlohmann::json;
@@ -103,60 +105,16 @@ static void log_error_if_nonzero(const char *message, int error_code)
     }
 }
 
-struct Rect {
-    float top, left, bottom, right;
-
-    /**
-     * @brief Construct a new Rect object
-     * 
-     * @param xMin Left
-     * @param yMin Top
-     * @param xMax Right
-     * @param yMax Bottom
-     */
-    Rect(float xMin, float yMin, float xMax, float yMax) : top(yMin), left(xMin), bottom(yMax), right(xMax) {}
-
-    /**
-     * @brief Retruns the degree to which another rectangle is contained within this rectangle.
-     * 
-     * @param other Other rectangle to check
-     * @return float A number from 0 to 1 indicating how much the other rectangle is contained within this one. 0 meaning not at all and 1 meaning fully
-     */
-    float overlapRatio(Rect *other) {
-		// Fully outside
-		if(right <= other->left || other->right <= left || top >= other->bottom || other->top >= bottom)
-			return 0;
-
-		float width, height;
-
-		if(right >= other->right && left <= other->left)
-			// On X axis, B is fully within A
-			width = other->right - other->left;
-		else if(other->right >= right && other->left <= left)
-			// X axis A is fully within B
-			width = right - left;
-		else if(right >= other->right)
-			width = other->right - left;
-		else
-			width = right - other->left;
-
-		if(top <= other->top && bottom >= other->bottom)
-			height = other->bottom - other->top;
-		else if(other->top <= top && other->bottom >= bottom)
-			height = bottom - top;
-		else if(top <= other->top)
-			height = bottom - other->top;
-		else
-			height = other->bottom - top;
-
-		return (width * height) / ((other->right - other->left) * (other->bottom - other->top));
-    }
-};
-
+/**
+ * @brief Hardcoded "detections slots"
+ * 
+ * The values are Rect structs and the coordinates are from 0 - 1 on both axes. * 
+ */
 static std::vector<Rect> slots = {
-    {0, 0, 0.5, 1},
-    {0.5, 0, 1, 1}
+    {0, 0, 0.5, 1}, // Left half
+    {0.5, 0, 1, 1}  // Right half
 };
+
 /*
  * @brief Event handler registered to receive MQTT events
  *
@@ -296,8 +254,6 @@ void run_demo() {
                         continue;
                     }
 
-                    // TODO: create defined rects for "slots" and check which, if any, detection is in and specify in output
-                    
                     // JSON output
                     json detection = {
                         {"label", det.label},
@@ -307,8 +263,16 @@ void run_demo() {
                             {"ymin", det.ymin},
                             {"xmax", det.xmax},
                             {"ymax", det.ymax},
-                        }}
+                        }},
+                        {"overlaps", json::array()}
                     };
+
+                    // Add slots overlaps
+                    Rect detectionRect = {det.xmin, det.ymin, det.xmax, det.ymax};
+
+                    for( auto slot: slots ) {
+                        detection["overlaps"].push_back(slot.overlapRatio(&detectionRect));
+                    }
                     
                     // Add category name or NULL if index out-of-bounds
                     detection["category"] = (det.label <= labels.size() ? labels[det.label] : NULL);
