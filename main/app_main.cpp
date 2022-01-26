@@ -103,6 +103,60 @@ static void log_error_if_nonzero(const char *message, int error_code)
     }
 }
 
+struct Rect {
+    float top, left, bottom, right;
+
+    /**
+     * @brief Construct a new Rect object
+     * 
+     * @param xMin Left
+     * @param yMin Top
+     * @param xMax Right
+     * @param yMax Bottom
+     */
+    Rect(float xMin, float yMin, float xMax, float yMax) : top(yMin), left(xMin), bottom(yMax), right(xMax) {}
+
+    /**
+     * @brief Retruns the degree to which another rectangle is contained within this rectangle.
+     * 
+     * @param other Other rectangle to check
+     * @return float A number from 0 to 1 indicating how much the other rectangle is contained within this one. 0 meaning not at all and 1 meaning fully
+     */
+    float overlapRatio(Rect *other) {
+		// Fully outside
+		if(right <= other->left || other->right <= left || top >= other->bottom || other->top >= bottom)
+			return 0;
+
+		float width, height;
+
+		if(right >= other->right && left <= other->left)
+			// On X axis, B is fully within A
+			width = other->right - other->left;
+		else if(other->right >= right && other->left <= left)
+			// X axis A is fully within B
+			width = right - left;
+		else if(right >= other->right)
+			width = other->right - left;
+		else
+			width = right - other->left;
+
+		if(top <= other->top && bottom >= other->bottom)
+			height = other->bottom - other->top;
+		else if(other->top <= top && other->bottom >= bottom)
+			height = bottom - top;
+		else if(top <= other->top)
+			height = bottom - other->top;
+		else
+			height = other->bottom - top;
+
+		return (width * height) / ((other->right - other->left) * (other->bottom - other->top));
+    }
+};
+
+static std::vector<Rect> slots = {
+    {0, 0, 0.5, 1},
+    {0.5, 0, 1, 1}
+};
 /*
  * @brief Event handler registered to receive MQTT events
  *
@@ -265,7 +319,12 @@ void run_demo() {
                 // Only send if we found any relevant categories
                 if(jsonRoot["detections"].size() > 0) {
                     std::string jsonString = jsonRoot.dump();
-                    esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+                    if(!CONFIG_DEBUG_MODE)
+                        // Only send if not running in debug mode
+                        esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+                    else
+                        // Debug mode from config: only print JSON
+                        ESP_LOGI(TAG, "MQTT (unsent):\n%s", jsonString.c_str());
                 }
 			}
 

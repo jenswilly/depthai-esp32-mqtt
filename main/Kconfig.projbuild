@@ -29,9 +29,11 @@ menu "Example Configuration"
         default "bb14506b-2c6a-4dc9-8c16-f98f3419603b"
         help
             Client ID
-            
-    config BROKER_URL_FROM_STDIN
-        bool
-        default y if BROKER_URL = "FROM_STDIN"
+
+    config DEBUG_MODE
+        bool "DEBUG mode"
+        default y
+        help
+            When running in DEBUG mode, MQTT messages are not sent. Only debug-logged.        
 
 endmenu
