@@ -245,7 +245,7 @@ void run_demo() {
                 // Iterate detections
 				for(const dai::ImgDetection& det : det.detections) {
                     // Ignore if not specific labels (person, car, cat)
-                    if(det.label != 7 && det.label != 8 && det.label != 15) {   // TODO: change to constant vector and use find()
+                    if(det.label != 7 /* && det.label != 8 && det.label != 15 */) {   // TODO: change to constant vector and use find()
                         printf("Ignoring detection with label %d\n", det.label);
                         continue;
                     }
@@ -264,13 +264,15 @@ void run_demo() {
                             {"xmax", det.xmax},
                             {"ymax", det.ymax},
                         }},
-                        {"overlaps", json::array()}
+                        {"overlaps", json::array()},
+                        {"slotOccupied", json::array()}
                     };
 
                     // Add slots overlaps. For each slot, check how much the rect for this detection is contained in/overlaps with the slot
                     Rect detectionRect = {det.xmin, det.ymin, det.xmax, det.ymax};
                     for( auto slot: slots ) {
                         detection["overlaps"].push_back(slot.overlapRatio(&detectionRect));
+                        detection["slotOccupied"].push_back(detectionRect.overlapRatio(&slot));
                     }
                     
                     // Add category name or NULL if index out-of-bounds
@@ -281,13 +283,15 @@ void run_demo() {
 
                 // Only send if we found any relevant categories
                 if(jsonRoot["detections"].size() > 0) {
-                    std::string jsonString = jsonRoot.dump();
-                    if(!CONFIG_DEBUG_MODE)
+                    if(!CONFIG_DEBUG_MODE) {
                         // Only send if not running in debug mode
+                        std::string jsonString = jsonRoot.dump();
                         esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
-                    else
-                        // Debug mode from config: only print JSON
+                    } else {
+                        // Debug mode from config: only print JSON (pretty-printed)
+                        std::string jsonString = jsonRoot.dump(4);
                         ESP_LOGI(TAG, "MQTT (unsent):\n%s", jsonString.c_str());
+                    }
                 }
 			}
 
