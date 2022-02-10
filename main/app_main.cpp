@@ -283,15 +283,15 @@ void run_demo() {
 
                 // Only send if we found any relevant categories
                 if(jsonRoot["detections"].size() > 0) {
-                    if(!CONFIG_DEBUG_MODE) {
-                        // Only send if not running in debug mode
-                        std::string jsonString = jsonRoot.dump();
-                        esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
-                    } else {
+#ifdef CONFIG_DEBUG_MODE
                         // Debug mode from config: only print JSON (pretty-printed)
                         std::string jsonString = jsonRoot.dump(4);
                         ESP_LOGI(TAG, "MQTT (unsent):\n%s", jsonString.c_str());
-                    }
+#else
+                        // Only send if not running in debug mode
+                        std::string jsonString = jsonRoot.dump();
+                        esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+#endif
                 }
 			}
 
