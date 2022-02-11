@@ -74,7 +74,7 @@ auto lastTimestamp = std::chrono::steady_clock::now();
 #define MIN_CONFIDENCE 0.8
 
 /// Minimum overlap ratio for a slot to be considered "occupied"
-#define MIN_OCCUPIEDRATIO 0.65
+#define MIN_OCCUPIED_RATIO 0.65
 
 #define MAX_DETECTIONS 16
 
@@ -427,10 +427,10 @@ void run_demo() {
                     float slot2OccupiedRatio = detectionRect.overlapRatio(&slots[1]);
 
                     // Update slot1 and slot2 if there is suffcient overlap. Yes, these can be set by multiple detections
-                    if(slot1OccupiedRatio > MIN_OCCUPIEDRATIO)
+                    if(slot1OccupiedRatio >= MIN_OCCUPIED_RATIO)
                         postBody["slot1"] = "occupied";
 
-                    if(slot2OccupiedRatio > MIN_OCCUPIEDRATIO)
+                    if(slot2OccupiedRatio >= MIN_OCCUPIED_RATIO)
                         postBody["slot2"] = "occupied";
 
                     /*
