@@ -68,7 +68,7 @@ static const char *TAG = "MQTT_EXAMPLE";
 
 /// Timestamp for throttling
 auto lastTimestamp = std::chrono::steady_clock::now();
-#define THROTTLE_INTERVAL 5
+#define THROTTLE_INTERVAL 3
 
 /// Minimum confidence for detection to be accepted
 #define MIN_CONFIDENCE 0.8
@@ -354,8 +354,11 @@ static void http_transmit(std::string postBody)
     esp_http_client_cleanup(client);
 }
 
-void run_demo() {
+static void http_test_task(void *pvParameters) {
 	uint8_t req_success = 0;
+
+    // For keeping track of the data we sent last
+    std::string lastSentData = "never";
 
 	dai::SpiApi mySpiApi;
 	mySpiApi.set_send_spi_impl(&esp32_send_spi);
@@ -373,8 +376,8 @@ void run_demo() {
             auto now = std::chrono::steady_clock::now();
             std::chrono::duration<double> elapsed = now - lastTimestamp;
 
-            // Only proceed if there are detections and enough time has elapsed since last update
-			if(det.detections.size() > 0 && elapsed.count() >= THROTTLE_INTERVAL ) {
+            // Only proceed if enough time has elapsed since last update
+			if(elapsed.count() >= THROTTLE_INTERVAL) {
                 // Create root object
                 // json jsonRoot;
                 // jsonRoot["detections"] = json::array();
@@ -385,8 +388,6 @@ void run_demo() {
                     {"slot1", "free"},
                     {"slot2", "free"}
                 };
-
-                bool dataValid = false;
 
                 // Iterate detections
 				for(const dai::ImgDetection& det : det.detections) {
@@ -400,8 +401,7 @@ void run_demo() {
                         continue;
                     }
 
-                    // At least one detection if above the confidence threshold: data is valid and update timestamp since we're sending now
-                    dataValid = true;
+                    // At least one detection if above the confidence threshold: update timestamp since we're sending now
                     lastTimestamp = now;
 
                     // JSON output
@@ -423,14 +423,14 @@ void run_demo() {
                     // Add slots overlaps. For each slot, check how much the rect for this detection is contained in/overlaps with the slot
                     Rect detectionRect = {det.xmin, det.ymin, det.xmax, det.ymax};
 
-                    float slot1OccupiedRatio = detectionRect.overlapRatio(&slots[0]);
-                    float slot2OccupiedRatio = detectionRect.overlapRatio(&slots[1]);
+                    float slot1OverlapRatio = slots[0].overlapRatio(&detectionRect);
+                    float slot2OverlapRatio = slots[1].overlapRatio(&detectionRect);
 
                     // Update slot1 and slot2 if there is suffcient overlap. Yes, these can be set by multiple detections
-                    if(slot1OccupiedRatio >= MIN_OCCUPIED_RATIO)
+                    if(slot1OverlapRatio >= MIN_OCCUPIED_RATIO)
                         postBody["slot1"] = "occupied";
 
-                    if(slot2OccupiedRatio >= MIN_OCCUPIED_RATIO)
+                    if(slot2OverlapRatio >= MIN_OCCUPIED_RATIO)
                         postBody["slot2"] = "occupied";
 
                     /*
@@ -446,18 +446,16 @@ void run_demo() {
                     */
 				}
 
-                // Only send if we found any relevant categories
-                if(dataValid) {
-#ifdef CONFIG_DEBUG_MODE
-                        // Debug mode from config: only print JSON (pretty-printed)
-                        std::string jsonString = postBody.dump(4);
+                // Only send if data has changed
+                std::string jsonString = postBody.dump(4);
+                if(jsonString != lastSentData) {
                         ESP_LOGI(TAG, "HTTP body (unsent):\n%s", jsonString.c_str());
-#else
+#ifndef CONFIG_DEBUG_MODE
                         // Only send if not running in debug mode
-                        std::string jsonString = postBody.dump();
                         // esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
                         http_transmit(jsonString);
 #endif
+                        lastSentData = jsonString;
                 }
 			}
 
@@ -501,6 +499,6 @@ void app_main(void)
     init_esp32_spi();
     ESP_LOGI(TAG, "SPI initialized.");
 
-    // Run SPI listener loop
-    run_demo(); // Never completes
+    // Start main loop
+    xTaskCreate(&http_test_task, "http_test_task", 8192, NULL, 5, NULL);
 }
