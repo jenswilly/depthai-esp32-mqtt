@@ -73,6 +73,9 @@ auto lastTimestamp = std::chrono::steady_clock::now();
 /// Minimum confidence for detection to be accepted
 #define MIN_CONFIDENCE 0.8
 
+/// Minimum overlap ratio for a slot to be considered "occupied"
+#define MIN_OCCUPIEDRATIO 0.65
+
 #define MAX_DETECTIONS 16
 
 static const char* METASTREAM = "spimetaout";
@@ -299,6 +302,58 @@ esp_err_t _http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
+static void http_transmit(std::string postBody)
+{
+    char local_response_buffer[MAX_HTTP_OUTPUT_BUFFER] = {0};
+    /**
+     * NOTE: All the configuration parameters for http_client must be spefied either in URL or as host and path parameters.
+     * If host and path parameters are not set, query parameter will be ignored. In such cases,
+     * query parameter should be specified in URL.
+     *
+     * If URL as well as host and path parameters are specified, values of host and path will be considered.
+     */
+    esp_http_client_config_t config = {
+        .host = "europe-west1-jwj-development.cloudfunctions.net",
+        .path = "/app/test",
+        .disable_auto_redirect = false,
+        .event_handler = _http_event_handler,
+        .transport_type = HTTP_TRANSPORT_OVER_SSL,
+        .user_data = local_response_buffer,        // Pass address of local buffer to get response
+    };
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+
+    // GET
+    esp_http_client_set_method(client, HTTP_METHOD_GET);
+    esp_http_client_set_header(client, "x-api-token", "bad-squirrel");
+    esp_err_t err = esp_http_client_perform(client);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %lld",
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG, "HTTP GET request failed: %s", esp_err_to_name(err));
+    }
+    ESP_LOG_BUFFER_HEX(TAG, local_response_buffer, strlen(local_response_buffer));
+
+    // POST
+    const char *post_data = postBody.c_str();
+    esp_http_client_set_url(client, "https://europe-west1-jwj-development.cloudfunctions.net/app/update");
+    esp_http_client_set_method(client, HTTP_METHOD_POST);
+    esp_http_client_set_header(client, "Content-Type", "application/json");
+    esp_http_client_set_header(client, "x-api-token", "bad-squirrel");
+    esp_http_client_set_post_field(client, post_data, strlen(post_data));
+    err = esp_http_client_perform(client);
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "HTTP POST Status = %d, content_length = %lld",
+                esp_http_client_get_status_code(client),
+                esp_http_client_get_content_length(client));
+    } else {
+        ESP_LOGE(TAG, "HTTP POST request failed: %s", esp_err_to_name(err));
+    }
+
+    esp_http_client_cleanup(client);
+}
+
 void run_demo() {
 	uint8_t req_success = 0;
 
@@ -307,9 +362,6 @@ void run_demo() {
 	mySpiApi.set_recv_spi_impl(&esp32_recv_spi);
 
 	while(1) {
-		// ----------------------------------------
-		// basic example of receiving data and metadata from messages.
-		// ----------------------------------------
 		dai::Message received_msg;
 
 		if(mySpiApi.req_message(&received_msg, METASTREAM)) {
@@ -321,12 +373,20 @@ void run_demo() {
             auto now = std::chrono::steady_clock::now();
             std::chrono::duration<double> elapsed = now - lastTimestamp;
 
+            // Only proceed if there are detections and enough time has elapsed since last update
 			if(det.detections.size() > 0 && elapsed.count() >= THROTTLE_INTERVAL ) {
-                lastTimestamp = now;
-
                 // Create root object
-                json jsonRoot;
-                jsonRoot["detections"] = json::array();
+                // json jsonRoot;
+                // jsonRoot["detections"] = json::array();
+
+                // Firebase function POST body JSON. slot1 and slot2 will be changed if occipied while iterating detections
+                json postBody = {
+                    {"sensor", CONFIG_BROKER_CLIENTID},
+                    {"slot1", "free"},
+                    {"slot2", "free"}
+                };
+
+                bool dataValid = false;
 
                 // Iterate detections
 				for(const dai::ImgDetection& det : det.detections) {
@@ -340,7 +400,12 @@ void run_demo() {
                         continue;
                     }
 
+                    // At least one detection if above the confidence threshold: data is valid and update timestamp since we're sending now
+                    dataValid = true;
+                    lastTimestamp = now;
+
                     // JSON output
+                    /*
                     json detection = {
                         {"label", det.label},
                         {"confidence", det.confidence},
@@ -353,9 +418,22 @@ void run_demo() {
                         {"overlaps", json::array()},
                         {"slotOccupied", json::array()}
                     };
+                    */
 
                     // Add slots overlaps. For each slot, check how much the rect for this detection is contained in/overlaps with the slot
                     Rect detectionRect = {det.xmin, det.ymin, det.xmax, det.ymax};
+
+                    float slot1OccupiedRatio = detectionRect.overlapRatio(&slots[0]);
+                    float slot2OccupiedRatio = detectionRect.overlapRatio(&slots[1]);
+
+                    // Update slot1 and slot2 if there is suffcient overlap. Yes, these can be set by multiple detections
+                    if(slot1OccupiedRatio > MIN_OCCUPIEDRATIO)
+                        postBody["slot1"] = "occupied";
+
+                    if(slot2OccupiedRatio > MIN_OCCUPIEDRATIO)
+                        postBody["slot2"] = "occupied";
+
+                    /*
                     for( auto slot: slots ) {
                         detection["overlaps"].push_back(slot.overlapRatio(&detectionRect));
                         detection["slotOccupied"].push_back(detectionRect.overlapRatio(&slot));
@@ -365,18 +443,20 @@ void run_demo() {
                     detection["category"] = (det.label <= labels.size() ? labels[det.label] : NULL);
 
                     jsonRoot["detections"].push_back(detection);
+                    */
 				}
 
                 // Only send if we found any relevant categories
-                if(jsonRoot["detections"].size() > 0) {
+                if(dataValid) {
 #ifdef CONFIG_DEBUG_MODE
                         // Debug mode from config: only print JSON (pretty-printed)
                         std::string jsonString = jsonRoot.dump(4);
                         ESP_LOGI(TAG, "MQTT (unsent):\n%s", jsonString.c_str());
 #else
                         // Only send if not running in debug mode
-                        std::string jsonString = jsonRoot.dump();
+                        std::string jsonString = postBody.dump();
                         // esp_mqtt_client_publish(client, mqtt_detections_topic.c_str(), jsonString.c_str(), jsonString.length(), 0, 0);
+                        http_transmit(jsonString);
 #endif
                 }
 			}
