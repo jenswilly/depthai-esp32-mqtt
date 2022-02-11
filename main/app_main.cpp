@@ -450,8 +450,8 @@ void run_demo() {
                 if(dataValid) {
 #ifdef CONFIG_DEBUG_MODE
                         // Debug mode from config: only print JSON (pretty-printed)
-                        std::string jsonString = jsonRoot.dump(4);
-                        ESP_LOGI(TAG, "MQTT (unsent):\n%s", jsonString.c_str());
+                        std::string jsonString = postBody.dump(4);
+                        ESP_LOGI(TAG, "HTTP body (unsent):\n%s", jsonString.c_str());
 #else
                         // Only send if not running in debug mode
                         std::string jsonString = postBody.dump();
